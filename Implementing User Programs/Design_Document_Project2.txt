@@ -1,0 +1,331 @@
+		     +--------------------------+
+         	     | CS 140	                |
+		     | PROJECT 2: USER PROGRAMS	|
+		     | DESIGN DOCUMENT        	|
+		     +--------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Naveena Elango <naveenae@buffalo.edu>
+Sheena Ratnam Priya <sheenara@buffalo.edu>
+Soumya Venkatesan <soumyave@buffalo.edu>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Describe briefly which parts of the assignment were implemented by
+>> each member of your team. If some team members contributed significantly
+>> more or less than others (e.g. 2x), indicate that here.
+
+FirstName LastName: contribution
+FirstName LastName: contribution
+FirstName LastName: contribution
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+			   ARGUMENT PASSING
+			   ================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+ 
+char * current_token
+This points to the current token of the command line argument
+char * next_token 
+This servers as a pointer to the next token in the command line argument
+int arg_total_count
+This keeps a count of the number of arguments being processes
+int * argument_list[]
+This contains the argument list
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe how you implemented argument parsing.  How do
+>> you arrange for the elements of argv[] to be in the right order?
+>> How do you avoid overflowing the stack page?
+
+The file name initially exists as a single string. A copy of the string 
+is made and then it is tokenised to obtain the command and arguments seperately. 
+The command is the first token which is used as the filename and it is also 
+used as name of the new thread that is created. strtok_r() is used to parse the 
+arguments and " " (space) is used as delimitor. A copy of the arguments is tokenised 
+and stored in an array. The stack is set up and command and the arguments are pushed 
+into it. The argument is pushed into the stack in reverse order so that the first 
+token in the argument is at the top. And a null pointer is added to the stack at the end.
+In case of a stack overflow, a page fault exception will occur and the address 
+will become invalid which inturn will cause the running thread to be killed.
+
+
+---- RATIONALE ----
+
+>> A3: Why does Pintos implement strtok_r() but not strtok()?
+
+While parsing, strtok() uses a single static buffer to operate.So 
+when multiple threads try to access it at the same time, the value 
+that one thread saved before the next thread gained control might 
+get corrupted. So strtok() is not thread safe. 
+Whereas, strtok_r() is a reentrant function, that is it has the 
+capacity to halt the execution and resume without any failure when 
+multiple threads try to access the buffer at the same time. It uses 
+an additional argument to save the pointer to the next token in the 
+list. So strtok_r() is thread safe.
+ 
+>> A4: In Pintos, the kernel separates commands into a executable name
+>> and arguments.  In Unix-like systems, the shell does this
+>> separation.  Identify at least two advantages of the Unix approach.
+
+1. Unix-like systems use the shell to seperate command and arguments 
+instead of kernel. In case the input text is very large or some situation 
+occurs that causes a crash or improper behaviour, it will happen only at 
+the shell level and the kernel will still remain protected. Thus, usage of 
+shell offers an additional level of protection in unix-like systems.
+2. In unix-like systems, argument tokenising is scheduled by the 
+kernel as a new thread. This helps preserve priority scheduling where the 
+kernel pauses the argument parsing done by shell and schedules the higher 
+priority thread that is ready to run.
+3. Thus, in unix-like systems kernel is not used unnecessarily and 
+it's time and resources are not wasted on operations that can performed 
+by the shell.
+
+
+			     SYSTEM CALLS
+			     ============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+struct list file_descriptor
+This is used to store a list of file decriptors for the thread
+struct list child_processes
+This is used to store a list of child processes
+struct thread * thread_parent
+This is used as reference pointer to the parent thread
+struct file * executable_file_pointer
+This is used as pointer to the executable file
+struct semaphore semaphore_child
+This is used when waiting for the child process to execute
+struct child_structure {
+      int child_id;
+      int child_exit;
+      bool child_load;
+      struct list_elem child_list_elem;
+}
+This is a struct that helps keep track of the child process
+struct file_descriptor_struct {
+      int file_decriptor_id;
+      struct list_elem file_descriptor_elem;
+      struct file * file_pointer;
+}
+This is a struct that helps keep track of the file descriptors
+
+>> B2: Describe how file descriptors are associated with open files.
+>> Are file descriptors unique within the entire OS or just within a
+>> single process?
+
+A new file descriptor will be assigned to a file everytime it is opened. 
+Each time a call in made to open() system call, the file will be assigned 
+a unique file descriptor and will also be added to the list of open files 
+that the process maintains. When the file is closed, the file descriptor 
+will be freed and the freed file descriptor can be used for another new file.
+Thus, file descriptors are unique just within a single process.
+
+---- ALGORITHMS ----
+
+>> B3: Describe your code for reading and writing user data from the
+>> kernel.
+
+Reading Data from the kernel
+There are two reads possibe 
+1) From STDIN - Keyboard
+2) From reading from a open file
+
+In case (1), we use the function input_getc() as the file handler fd is 0 to read
+from the console.
+In case (2), fd points to open file. So it reads the size of thee open file 
+mentioned in "size" into "buffer". If its successful it returns the 
+number of bytes read or it returns -1
+
+Writing USer Data
+As discussed for read, this also has 2 casese to be discussed
+1) Write to console
+2) Write to an open file pointed by fd file handler. 
+
+In case (1), the fd file pointer will be 1. "Buffer" will have the contents to be 
+written on to the console. putbuf() will completely transfer all the contents in the 
+buffer into console in one call.
+In case (2), "buffer" will contain the items to be written into a file pointed 
+by fd file handler. Writes the number of bytes specified in "size". Returns the number 
+of bytes written into the file.
+
+But all the writing should be done as a critical section because it may lead to 
+race condition when accesed by multiple threads
+ 
+
+>> B4: Suppose a system call causes a full page (4,096 bytes) of data
+>> to be copied from user space into the kernel.  What is the least
+>> and the greatest possible number of inspections of the page table
+>> (e.g. calls to pagedir_get_page()) that might result?  What about
+>> for a system call that only copies 2 bytes of data?  Is there room
+>> for improvement in these numbers, and how much?
+
+If a full page needs to be copied from user space into the kernel the 
+least possible number of inspections is 1 (one inspection per page or 
+one inspection per transfer). The maximum possible number of inspections
+is 4096(one inspection per byte)
+
+If only 2 bytes of data need to be transfered from the user space to kernel
+the least possible number of inspections is one (one inspection per transfer) 
+and the maximum number of inspections is 2 (one inspection per byte)
+
+>> B5: Briefly describe your implementation of the "wait" system call
+>> and how it interacts with process termination.
+
+"wait" system call waits for the child process process ID and retrives the child's 
+exit status Child process or the process which is being waited oncan be still in
+live state. So it should wait till the child process finishes and then its pid passed. 
+When the child process was killed by the kernel due to exceptions then it returns a -1
+When a parent calls a child's child then -1 is returned and the process fails. When
+a process waits for the same child more than once then -1 is returned. process_wait()
+ensures that pintos doesnot terminate before the initial process exits.
+
+>> B6: Any access to user program memory at a user-specified address
+>> can fail due to a bad pointer value.  Such accesses must cause the
+>> process to be terminated.  System calls are fraught with such
+>> accesses, e.g. a "write" system call requires reading the system
+>> call number from the user stack, then each of the call's three
+>> arguments, then an arbitrary amount of user memory, and any of
+>> these can fail at any point.  This poses a design and
+>> error-handling problem: how do you best avoid obscuring the primary
+>> function of code in a morass of error-handling?  Furthermore, when
+>> an error is detected, how do you ensure that all temporarily
+>> allocated resources (locks, buffers, etc.) are freed?  In a few
+>> paragraphs, describe the strategy or strategies you adopted for
+>> managing these issues.  Give an example.
+
+If the user provides an invalid pointer they must be rejected without harm to the 
+kernel or other running processes by terminating the process that passed the 
+invalid pointer and freeing its resources. The validity of the pointer should 
+be verified and derefernced if the pointer is valid. Another way is to check if a user 
+pointer points below PHYS_BASE. 
+ 
+ 
+---- SYNCHRONIZATION ----
+
+>> B7: The "exec" system call returns -1 if loading the new executable
+>> fails, so it cannot return before the new executable has completed
+>> loading.  How does your code ensure this?  How is the load
+>> success/failure status passed back to the thread that calls "exec"?
+
+Each thread will have a child status maintaining resource. When a new 
+process (child) is loaded, if its is successfully loaded, then it will
+return the process pid else exec is called which will return a -1 to this 
+status maintaining resource 
+
+>> B8: Consider parent process P with child process C.  How do you
+>> ensure proper synchronization and avoid race conditions when P
+>> calls wait(C) before C exits?  After C exits?  How do you ensure
+>> that all resources are freed in each case?  How about when P
+>> terminates without waiting, before C exits?  After C exits?  Are
+>> there any special cases?
+
+P calls wait(C) before C exits
+
+When a new child C is created it is appended in the parents list and 
+a child struct is created which stores all the status of the child process.
+In this case, P call wait(C) befor C exits. Here the parent P waits until C
+completed its work and updates the parent list and removes the corresponding 
+struct while returning the exited status of that paticular C.
+
+P calls wait(C) after C exits
+
+If P calls wait on C after C exits, the list will already show that paticular C 
+has exited. So it returns the childs exit status. But if the same C is called 
+repeatedly it would return error or -1
+
+P terminates without waiting, before C exits
+
+If P terminates before its child/ children C then the C's pointer pointing to its 
+corresponding parent P will point to NULL and P's children list will becompletely 
+freed along with other resources allocated for P's execution
+
+P terminates without waiting, after C exits
+
+While P terminated if C has already exited, then P's list of child will show the 
+corresponding status. Its C list has emptied and now the parent P also exits
+
+---- RATIONALE ----
+
+>> B9: Why did you choose to implement access to user memory from the
+>> kernel in the way that you did?
+
+We have not implemented it yet but we have decided to go with the first 
+method which is to verify the validity of the user-provided pointer and then
+dereference it.Even if the system has accquired lock or allocated memory then
+it encounters an invalid user pointer it will de allocate or release the 
+lock since in this method first check the pointer's validity before 
+dereferncing it. But in the second method where they check only if the user 
+pointer points below the PHY_BASE and then dereference it. In this case, if the 
+invalid pointer causes a page fault it is difficult to return a error code from 
+the memory access. A helpful code was provided for this case in the resources.
+But still the first method was straight forward so we decided to implement the 
+first method
+
+>> B10: What advantages or disadvantages can you see to your design
+>> for file descriptors?
+
+Advantages
+
+Kernel is aware of all operations done to a paticular file because the file descriptor 
+tracks these. Hence it is more convenient for any further changes required in the files 
+in the file system 
+
+Disadvantages
+
+Every time a file is open it returns a new file descriptor for the
+same file. So if the same file is opened many times without calls to close then 
+there would be different file descriptors for the same file. So if we want to retrive 
+a file descriptor it would be very slow.
+
+>> B11: The default tid_t to pid_t mapping is the identity mapping.
+>> If you changed it, what advantages are there to your approach?
+
+tid_t identifies a kernel thread and pid_t identifies a user process. We are 
+not changing the identity mapping between pid_t and tid_t because in user programs
+each process can have only one thread (multi-threading is not supported). If we were 
+to use multi-threading environment in user programs then we would change identity 
+mapping
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?
